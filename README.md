@@ -1,3 +1,5 @@
+In this project we have integrated our demo project with image building with docker ,image scanning with trivy and push our image to docker hub
+
 Errors that we got during this see chatgpt if you want but it is too long given short description below - https://chatgpt.com/c/6a4de0df-b588-83ee-aea9-8d760d8e5627
 
 Error at Docker login step 
