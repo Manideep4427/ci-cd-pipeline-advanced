@@ -1,0 +1,13 @@
+{
+  "name": "ci-cd-pipeline-demo",
+  "version": "1.0.0",
+  "description": "A demo project for learning CI/CD with GitHub Actions",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "node --test",
+    "lint": "node scripts/lint.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT"
+}
