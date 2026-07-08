@@ -1,0 +1,678 @@
+This is actually a **production-style CI/CD pipeline**. I'll explain it like an interviewer would expect you to understand it—not just what each line does, but **why it's used**.
+
+---
+
+# Job Definition
+
+```yaml
+build-and-ship:
+```
+
+This is the name of the job.
+
+The pipeline has three jobs:
+
+1. Quality & Security Checks
+2. Unit Tests
+3. **Build and Ship Docker Image** ← this job
+
+---
+
+# Runner
+
+```yaml
+runs-on: ubuntu-latest
+```
+
+GitHub creates a fresh Ubuntu virtual machine.
+
+Think of it as:
+
+```
+GitHub
+     ↓
+Creates Ubuntu Server
+     ↓
+Runs all these commands
+     ↓
+Deletes the server
+```
+
+Every workflow run gets a brand-new machine.
+
+---
+
+# Dependency
+
+```yaml
+needs: unit-tests
+```
+
+Means:
+
+```
+Quality Checks
+       ↓
+Unit Tests
+       ↓
+Build Docker Image
+```
+
+If unit tests fail,
+
+```
+Build Job
+❌ Won't even start
+```
+
+This prevents deploying broken code.
+
+---
+
+# Run only on Push to Main
+
+```yaml
+if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+```
+
+Suppose someone creates a Pull Request.
+
+```
+feature/login
+      ↓
+Pull Request
+```
+
+The Docker image **will NOT** be pushed.
+
+Only when:
+
+```
+Merge
+     ↓
+main branch
+     ↓
+Push Event
+```
+
+does this job execute.
+
+This avoids publishing Docker images for every feature branch.
+
+---
+
+# Checkout Code
+
+```yaml
+uses: actions/checkout@v6
+```
+
+Downloads your repository into the GitHub runner.
+
+Before:
+
+```
+Runner
+(empty)
+```
+
+After:
+
+```
+Runner
+
+/app
+   package.json
+   Dockerfile
+   src/
+```
+
+Without this step, nothing exists to build.
+
+---
+
+# Setup Buildx
+
+```yaml
+uses: docker/setup-buildx-action@v3
+```
+
+This enables Docker Buildx.
+
+Buildx provides:
+
+* Faster builds
+* Multi-stage builds
+* Build cache
+* Multi-architecture images
+
+Without Buildx:
+
+```
+docker build
+```
+
+With Buildx:
+
+```
+docker buildx build
+```
+
+Almost every modern CI pipeline uses Buildx.
+
+---
+
+# Docker Login
+
+```yaml
+uses: docker/login-action@v3
+```
+
+with
+
+```yaml
+username:
+password:
+```
+
+GitHub logs into Docker Hub.
+
+Equivalent to running:
+
+```bash
+docker login
+```
+
+Without login,
+
+```
+docker push
+```
+
+would fail with
+
+```
+unauthorized
+```
+
+because Docker Hub requires authentication.
+
+---
+
+# Build Docker Image
+
+```yaml
+uses: docker/build-push-action@v5
+```
+
+with
+
+```yaml
+context: .
+```
+
+means
+
+```
+Use current directory
+```
+
+which contains
+
+```
+Dockerfile
+package.json
+src/
+```
+
+---
+
+## load: true
+
+```yaml
+load: true
+```
+
+This is extremely important.
+
+Normally Buildx builds inside an isolated builder.
+
+```
+Builder
+    ↓
+Creates image
+```
+
+But the local Docker daemon cannot see it.
+
+With
+
+```yaml
+load: true
+```
+
+the image is copied into Docker on the runner.
+
+```
+Builder
+      ↓
+Docker Engine
+      ↓
+Available locally
+```
+
+Now Trivy can scan it.
+
+Without
+
+```yaml
+load: true
+```
+
+Trivy would report:
+
+```
+Image not found
+```
+
+---
+
+# Image Tag
+
+```yaml
+tags:
+myuser/ci-cd-pipeline-demo:latest
+```
+
+creates
+
+```
+Repository
+
+ci-cd-pipeline-demo
+
+Tag
+
+latest
+```
+
+Exactly like
+
+```bash
+docker build \
+-t myuser/ci-cd-pipeline-demo:latest .
+```
+
+---
+
+# Trivy Scan
+
+```yaml
+uses: aquasecurity/trivy-action
+```
+
+Trivy is a security scanner.
+
+It checks
+
+```
+Docker Image
+```
+
+for
+
+* OS vulnerabilities
+
+Example
+
+```
+openssl
+glibc
+busybox
+```
+
+and
+
+* Application packages
+
+Example
+
+```
+express
+axios
+lodash
+undici
+```
+
+---
+
+# Image to Scan
+
+```yaml
+image-ref:
+```
+
+You're telling Trivy
+
+```
+Scan this image
+
+myuser/ci-cd-pipeline-demo:latest
+```
+
+---
+
+# Output Format
+
+```yaml
+format: table
+```
+
+Instead of JSON
+
+```
+{
+...
+}
+```
+
+it prints
+
+```
+Library
+Severity
+Version
+Fix Version
+```
+
+which is much easier to read.
+
+---
+
+# exit-code
+
+Originally
+
+```yaml
+exit-code: '1'
+```
+
+means
+
+```
+If HIGH or CRITICAL found
+
+↓
+
+Pipeline Failed
+```
+
+You changed it to
+
+```yaml
+exit-code: '0'
+```
+
+Meaning
+
+```
+Found vulnerability?
+
+↓
+
+Report it
+
+↓
+
+Continue pipeline
+```
+
+This is useful for demos.
+
+---
+
+# ignore-unfixed
+
+```yaml
+ignore-unfixed: true
+```
+
+Suppose
+
+```
+openssl
+
+HIGH
+
+No fix exists yet
+```
+
+Should Trivy fail?
+
+```
+No
+```
+
+because developers cannot fix something that has no available patch.
+
+Only vulnerabilities with an available fix are considered.
+
+---
+
+# vuln-type
+
+```yaml
+vuln-type:
+os,library
+```
+
+Means scan
+
+Operating System
+
+```
+Alpine Linux
+
+BusyBox
+
+OpenSSL
+```
+
+and
+
+Application packages
+
+```
+Node Modules
+
+Python Packages
+
+Java Libraries
+```
+
+---
+
+# severity
+
+```yaml
+severity:
+CRITICAL,HIGH
+```
+
+Ignore
+
+```
+LOW
+
+MEDIUM
+```
+
+Report only
+
+```
+HIGH
+
+CRITICAL
+```
+
+because these are the most serious.
+
+---
+
+# Push Image
+
+```yaml
+docker/build-push-action
+```
+
+again.
+
+Why twice?
+
+Because the first build was
+
+```
+Build
+
+↓
+
+Local
+
+↓
+
+Scan
+```
+
+The second build is
+
+```
+Build
+
+↓
+
+Push
+
+↓
+
+Docker Hub
+```
+
+---
+
+# push
+
+```yaml
+push: true
+```
+
+Equivalent to
+
+```bash
+docker push
+```
+
+Without this,
+
+the image stays only inside the GitHub runner.
+
+---
+
+# Multiple Tags
+
+```yaml
+tags:
+
+latest
+
+github.sha
+```
+
+This pushes **two versions**.
+
+### Tag 1
+
+```
+latest
+```
+
+Always points to the newest image.
+
+```
+latest
+
+↓
+
+Image v15
+```
+
+---
+
+### Tag 2
+
+```yaml
+${{ github.sha }}
+```
+
+Example
+
+```
+8f71bc92a0
+```
+
+Every commit gets its own unique image.
+
+```
+myuser/app
+
+latest
+
+8f71bc92a0
+
+b56c97a31f
+
+cc78d22ee8
+```
+
+This is important because if production breaks after a deployment, you can roll back to a known-good image simply by deploying the previous commit's tag instead of rebuilding.
+
+---
+
+# Complete Flow
+
+```
+Developer Pushes Code
+        │
+        ▼
+Checkout Repository
+        │
+        ▼
+Setup Docker Buildx
+        │
+        ▼
+Login to Docker Hub
+        │
+        ▼
+Build Docker Image
+(load locally)
+        │
+        ▼
+Run Trivy Scan
+        │
+        ├── Vulnerabilities found?
+        │         │
+        │         ├── exit-code=1 → Pipeline fails
+        │         └── exit-code=0 → Continue
+        ▼
+Build & Push Image
+        │
+        ▼
+Docker Hub
+        ├── latest
+        └── <commit SHA>
+```
+
+## Interview explanation
+
+If an interviewer asks, "Why build the image twice?", a good answer is:
+
+> "The first build uses `load: true` so the image is available on the GitHub runner for Trivy to scan before it's published. After the scan passes—or is allowed to continue in a demo setup—the second `docker/build-push-action` builds and pushes the image to Docker Hub with both the `latest` tag and a unique commit SHA tag. The SHA tag provides immutable versioning and makes rollbacks straightforward."
