@@ -13,7 +13,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY package*.json ./
 # Install ONLY production dependencies to keep the image secure and small
-RUN npm ci --only=production
+#RUN npm ci --only=production
+RUN npm ci --omit=dev
 # Copy only the necessary files from the builder stage
 COPY --from=builder /app/src ./src
 
