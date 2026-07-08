@@ -1,17 +1,7 @@
-function add(a, b) {
-  return a + b;
-}
+const server = require("./app");
 
-function subtract(a, b) {
-  return a - b;
-}
+const PORT = process.env.PORT || 3000;
 
-function multiply(a, b) {
-  return a * b;
-}
-
-function isEven(n) {
-  return n % 2 === 0;
-}
-
-module.exports = { add, subtract, multiply, isEven };
+server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
